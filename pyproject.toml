@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parallel-multi-agent-codegen"
+version = "2.0.0"
+description = "A parallel multi-agent AI system that decomposes coding tasks into a DAG and generates code concurrently using specialized LLM agents."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Tathagata Debnath"},
+]
+keywords = ["ai", "agents", "multi-agent", "code-generation", "langgraph", "parallel"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+]
+
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.0.0",
+    "streamlit>=1.40.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+tracing = [
+    "langsmith>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["agents*", "graph*", "models*", "prompts*", "sandbox*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["UP045"]  # Project uses Optional[X] for Pydantic fields (see CLAUDE.md)
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
