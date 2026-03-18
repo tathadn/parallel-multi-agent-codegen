@@ -107,12 +107,12 @@ Three modules code in parallel instead of five running sequentially — a signif
 
 | Agent | Model | Role |
 |---|---|---|
-| **Orchestrator** | claude-sonnet-4 | Validates request, decomposes plan into parallel task DAG |
-| **Planner** | claude-sonnet-4 | Generates structured plan: objective, steps, files, dependencies |
-| **Coder Workers** | claude-sonnet-4 | Generate code for assigned DAG nodes (run concurrently) |
-| **Integrator** | claude-sonnet-4 | Merges parallel outputs, resolves import conflicts |
-| **Reviewer** | claude-sonnet-4 | Scores code quality (0-10), identifies issues |
-| **Tester** | user's choice | Generates pytest tests and runs them in sandbox |
+| **Orchestrator** | claude-sonnet-4-20250514 | Validates request, decomposes plan into parallel task DAG |
+| **Planner** | claude-sonnet-4-20250514 | Generates structured plan: objective, steps, files, dependencies |
+| **Coder Workers** | claude-sonnet-4-20250514 | Generate code for assigned DAG nodes (run concurrently) |
+| **Integrator** | claude-sonnet-4-20250514 | Merges parallel outputs, resolves import conflicts |
+| **Reviewer** | claude-sonnet-4-20250514 | Scores code quality (0-10), identifies issues |
+| **Tester** | configurable (sidebar) | Generates pytest tests and runs them in sandbox |
 
 ### Shared State
 
@@ -160,12 +160,18 @@ class TaskDAG(BaseModel):
 
 ---
 
+## Prerequisites
+
+- Python 3.10+
+- An [Anthropic API key](https://console.anthropic.com/)
+- Docker (optional — required only for sandbox test execution)
+
 ## Quick Start
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/tathadn/multi-agent-codegen.git
-cd multi-agent-codegen
+git clone https://github.com/tathadn/parallel-multi-agent-codegen.git
+cd parallel-multi-agent-codegen
 
 # 2. Install dependencies
 pip install -e ".[dev]"
