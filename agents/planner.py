@@ -21,7 +21,7 @@ def planner_agent(state: AgentState) -> AgentState:
     state.log("📋 Planner: generating implementation plan")
 
     prompt = PLANNER_PROMPT.format(user_request=state.user_request)
-    raw = call_llm(system=PLANNER_SYSTEM, prompt=prompt)
+    raw = call_llm(system=PLANNER_SYSTEM, prompt=prompt, model_name="claude-sonnet-4-20250514")
 
     try:
         plan_data = parse_json_response(raw)
