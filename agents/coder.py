@@ -54,7 +54,7 @@ def _code_single_node(
         revision_context=revision_context or "No revisions — first pass.",
     )
 
-    raw = call_llm(system=CODER_SYSTEM, prompt=prompt)
+    raw = call_llm(system=CODER_SYSTEM, prompt=prompt, model_name="claude-sonnet-4-20250514")
     files_data = parse_json_response(raw)
 
     if isinstance(files_data, dict):
@@ -167,13 +167,43 @@ def coder_worker(state: AgentState) -> AgentState:
     if state.test_result and not state.test_result.passed:
         revision_context += f"Test failures:\n{state.test_result.error_output}\n"
 
-    # If revising, reset all DAG nodes
+    # If revising, only reset nodes whose files were flagged (surgical revision)
     if state.iteration > 0:
-        for node in state.task_dag.nodes:
-            node.status = WorkerStatus.IDLE
-            node.started_at = None
-            node.finished_at = None
-        state.artifacts = []
+        failing_files: set[str] = set()
+        if state.review and not state.review.approved:
+            for issue in state.review.issues:
+                for artifact in state.artifacts:
+                    if artifact.filename.lower() in issue.lower():
+                        failing_files.add(artifact.filename)
+
+        if state.test_result and not state.test_result.passed:
+            error_text = state.test_result.error_output.lower()
+            for artifact in state.artifacts:
+                if artifact.filename.lower() in error_text:
+                    failing_files.add(artifact.filename)
+
+        if not failing_files:
+            # Fallback: reset everything when we can't identify specific files
+            for node in state.task_dag.nodes:
+                node.status = WorkerStatus.IDLE
+                node.started_at = None
+                node.finished_at = None
+            state.artifacts = []
+            state.log("🔄 Revision: could not identify failing files — resetting all nodes")
+        else:
+            failing_node_ids: set[str] = set()
+            for artifact in state.artifacts:
+                if artifact.filename in failing_files and artifact.task_node_id:
+                    failing_node_ids.add(artifact.task_node_id)
+
+            for node in state.task_dag.nodes:
+                if node.id in failing_node_ids:
+                    node.status = WorkerStatus.IDLE
+                    node.started_at = None
+                    node.finished_at = None
+
+            state.artifacts = [a for a in state.artifacts if a.filename not in failing_files]
+            state.log(f"🔄 Revision: resetting {len(failing_node_ids)} node(s): {failing_files}")
 
     # Run parallel batches until DAG is complete
     loop = asyncio.new_event_loop()

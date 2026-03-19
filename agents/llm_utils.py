@@ -1,4 +1,4 @@
-"""Shared LLM utilities — thin wrapper around ChatAnthropic."""
+"""Shared LLM utilities — native Anthropic SDK with prompt caching."""
 
 from __future__ import annotations
 
@@ -6,25 +6,39 @@ import json
 import re
 from typing import Any
 
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage, SystemMessage
+import anthropic
+from langsmith import traceable
+
+_client = anthropic.Anthropic()
 
 
-def get_model(model_name: str = "claude-sonnet-4-20250514", temperature: float = 0.0) -> ChatAnthropic:
-    """Return a ChatAnthropic instance for the given model."""
-    return ChatAnthropic(model=model_name, temperature=temperature, max_tokens=8192)  # type: ignore[call-arg]
-
-
+@traceable(run_type="llm", name="call_llm")
 def call_llm(
     system: str,
     prompt: str,
     model_name: str = "claude-sonnet-4-20250514",
 ) -> str:
-    """Send a system + human message and return the raw text response."""
-    model = get_model(model_name)
-    messages = [SystemMessage(content=system), HumanMessage(content=prompt)]
-    response = model.invoke(messages)
-    return str(response.content)
+    """Send a system + human message and return the raw text response.
+
+    Uses cache_control=ephemeral on the system prompt to enable prompt caching,
+    cutting input costs by 60–90% after the first call.
+    """
+    response = _client.messages.create(
+        model=model_name,
+        max_tokens=8192,
+        system=[
+            {
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],  # type: ignore[list-item]
+        messages=[{"role": "user", "content": prompt}],
+    )
+    block = response.content[0]
+    if hasattr(block, "text"):
+        return block.text  # type: ignore[union-attr]
+    raise ValueError(f"Unexpected response block type: {type(block)}")
 
 
 def parse_json_response(text: str) -> Any:

@@ -19,7 +19,7 @@ from prompts import TESTER_PROMPT, TESTER_SYSTEM
 from .llm_utils import call_llm, parse_json_response
 
 
-def tester_agent(state: AgentState, model_name: str = "claude-sonnet-4-20250514") -> AgentState:
+def tester_agent(state: AgentState, model_name: str = "claude-haiku-4-5-20241022") -> AgentState:
     """Generate test files and execute them."""
     t0 = time.time()
     state.status = TaskStatus.TESTING
