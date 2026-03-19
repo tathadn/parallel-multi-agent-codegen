@@ -16,6 +16,8 @@
 | **Integration** | N/A (single coder) | Dedicated Integration Agent merges outputs |
 | **Parallelism** | None | Independent modules coded concurrently |
 | **Observability** | Basic status | Real-time DAG viz + timing breakdown |
+| **Cost optimization** | None | Prompt caching + model tiering + surgical revisions |
+| **Tracing** | None | LangSmith via `@traceable` on every LLM call |
 
 ---
 
@@ -107,12 +109,14 @@ Three modules code in parallel instead of five running sequentially — a signif
 
 | Agent | Model | Role |
 |---|---|---|
-| **Orchestrator** | claude-sonnet-4-20250514 | Validates request, decomposes plan into parallel task DAG |
-| **Planner** | claude-sonnet-4-20250514 | Generates structured plan: objective, steps, files, dependencies |
-| **Coder Workers** | claude-sonnet-4-20250514 | Generate code for assigned DAG nodes (run concurrently) |
-| **Integrator** | claude-sonnet-4-20250514 | Merges parallel outputs, resolves import conflicts |
-| **Reviewer** | claude-sonnet-4-20250514 | Scores code quality (0-10), identifies issues |
-| **Tester** | configurable (sidebar) | Generates pytest tests and runs them in sandbox |
+| **Orchestrator** | Haiku | Validates request, decomposes plan into parallel task DAG |
+| **Planner** | Sonnet | Generates structured plan: objective, steps, files, dependencies |
+| **Coder Workers** | Sonnet | Generate code for assigned DAG nodes (run concurrently) |
+| **Integrator** | Haiku | Merges parallel outputs, resolves import conflicts |
+| **Reviewer** | Haiku | Scores code quality (0-10), identifies issues |
+| **Tester** | Haiku (configurable) | Generates pytest tests and runs them in sandbox |
+
+Model tiering is intentional — Sonnet only where reasoning quality matters (planning, coding). Haiku handles mechanical tasks (merging, reviewing, test generation), cutting costs by 30–50%.
 
 ### Shared State
 
@@ -122,15 +126,15 @@ All agents read from and write to a Pydantic `AgentState`:
 class AgentState(BaseModel):
     user_request: str
     plan:         Optional[Plan]
-    task_dag:     Optional[TaskDAG]       # NEW: parallel task graph
+    task_dag:     Optional[TaskDAG]       # parallel task graph
     artifacts:    list[CodeArtifact]
     review:       Optional[ReviewFeedback]
     test_result:  Optional[TestResult]
     status:       TaskStatus
     iteration:    int
     max_iterations: int
-    logs:         list[str]               # NEW: timestamped pipeline log
-    timings:      dict[str, float]        # NEW: per-phase timing
+    logs:         list[str]               # timestamped pipeline log
+    timings:      dict[str, float]        # per-phase timing
 ```
 
 ### TaskDAG — The Core Data Structure
@@ -157,6 +161,37 @@ class TaskDAG(BaseModel):
     def all_done(self) -> bool: ...
     def topological_order(self) -> list[TaskNode]: ...
 ```
+
+---
+
+## Cost Optimization
+
+This project uses several techniques to minimize API spend:
+
+### Prompt Caching (saves 60–90%)
+
+All LLM calls use the native Anthropic SDK with `cache_control={"type": "ephemeral"}` on the system prompt. Since system prompts are identical across runs, they're cached after the first call — reducing input token cost to ~10%.
+
+### Model Tiering (saves 30–50%)
+
+Each agent uses the cheapest model that produces acceptable output for its task. Sonnet only where reasoning quality matters; Haiku for mechanical tasks. See the Agent Roles table above.
+
+### Surgical Revisions (saves 20–40% on revision loops)
+
+When the Reviewer or Tester flags issues, only the failing nodes are reset. Passing code is preserved and not regenerated:
+
+```
+Reviewer flags routes.py → only the "routes" DAG node resets to IDLE
+config.py, models.py, auth.py → remain DONE, artifacts preserved
+```
+
+### Cost Targets
+
+| Scenario | Target per run |
+|---|---|
+| Optimized (caching + tiering) | $0.06–$0.08 |
+| Development (simple prompt, 1 iter) | $0.02–$0.04 |
+| Demo (full pipeline, complex prompt) | $0.10–$0.15 |
 
 ---
 
@@ -219,7 +254,8 @@ A Python library for graph algorithms (BFS, DFS, Dijkstra) with a CLI interface
 | Library | Purpose |
 |---|---|
 | [LangGraph](https://github.com/langchain-ai/langgraph) | Agent orchestration with conditional edges |
-| [LangChain Anthropic](https://github.com/langchain-ai/langchain) | Claude API integration |
+| [Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python) | Claude API with prompt caching (`cache_control`) |
+| [LangSmith](https://smith.langchain.com/) | Full trace visibility via `@traceable` on every LLM call |
 | [Pydantic v2](https://docs.pydantic.dev/) | Typed state, structured LLM outputs |
 | [Streamlit](https://streamlit.io/) | Real-time web dashboard |
 | [asyncio](https://docs.python.org/3/library/asyncio.html) | Concurrent worker execution |
@@ -232,21 +268,27 @@ A Python library for graph algorithms (BFS, DFS, Dijkstra) with a CLI interface
 parallel-multi-agent-codegen/
 ├── agents/
 │   ├── __init__.py
-│   ├── llm_utils.py          # Shared LLM call + JSON parsing utilities
+│   ├── llm_utils.py          # Anthropic SDK with caching + @traceable
 │   ├── orchestrator.py        # ⭐ Orchestrator: request parsing + DAG decomposition
 │   ├── planner.py             # Planner: structured implementation plan
-│   ├── coder.py               # ⭐ Parallel coder workers with asyncio
+│   ├── coder.py               # ⭐ Parallel coder workers with asyncio + surgical revisions
 │   ├── integrator.py          # Integration agent: merges parallel outputs
 │   ├── reviewer.py            # Code review and scoring
 │   └── tester.py              # Test generation + sandbox execution
 ├── graph/
 │   ├── __init__.py
-│   └── pipeline.py            # LangGraph StateGraph with parallel nodes
+│   └── pipeline.py            # LangGraph StateGraph with conditional revision edge
 ├── models/
 │   ├── __init__.py
 │   └── state.py               # Pydantic models: AgentState, TaskDAG, etc.
 ├── prompts/
 │   └── __init__.py            # All agent system prompts and templates
+├── tests/
+│   ├── conftest.py            # Shared fixtures
+│   ├── test_models.py         # TaskDAG scheduling, AgentState, Pydantic models (33 tests)
+│   ├── test_pipeline.py       # should_continue() routing logic (12 tests)
+│   ├── test_llm_utils.py      # parse_json_response() (13 tests)
+│   └── test_agents.py         # Agent logic with mocked LLM (18 tests + surgical revision)
 ├── sandbox/
 │   └── Dockerfile             # Isolated test execution environment
 ├── app.py                     # Streamlit UI with real-time DAG visualization
@@ -269,15 +311,19 @@ Real software projects have modular structure. A config module doesn't depend on
 
 When multiple LLMs code in parallel without seeing each other's output, interface mismatches are inevitable. Worker 1 might export `get_user()` while Worker 2 imports `fetch_user()`. The Integration Agent acts as a merge step — similar to resolving merge conflicts in Git — ensuring the final codebase is coherent.
 
+### Why the native Anthropic SDK instead of LangChain's wrapper?
+
+LangChain's `ChatAnthropic` does not pass `cache_control` to the API, so prompt caching is unavailable through it. The native `anthropic` SDK supports `cache_control={"type": "ephemeral"}` directly, enabling 60–90% cost savings on system prompts. The `@traceable` decorator from LangSmith bridges the gap — every `call_llm()` invocation is still fully traced.
+
 ### Why asyncio + ThreadPoolExecutor?
 
-LangChain's `ChatAnthropic.invoke()` is synchronous. We wrap it in `asyncio.run_in_executor()` with a thread pool to achieve true concurrent API calls. This gives us the parallelism benefits without requiring a fully async LLM client.
+The native Anthropic SDK's `messages.create()` is synchronous. We wrap it in `asyncio.run_in_executor()` with a thread pool to achieve true concurrent API calls across multiple coder workers without requiring a fully async client.
 
 ---
 
 ## Tracing with LangSmith
 
-Every LLM call across all agents (including parallel workers) is traced when LangSmith is enabled:
+Every LLM call across all agents (including parallel workers) is traced when LangSmith is enabled. Tracing uses the `@traceable` decorator directly on `call_llm()` — so it works even though the native Anthropic SDK is used instead of LangChain's wrapper.
 
 ```bash
 # Add to .env:
@@ -287,6 +333,18 @@ LANGCHAIN_PROJECT=parallel-multi-agent-codegen
 ```
 
 You can see parallel worker calls running simultaneously in the LangSmith timeline view.
+
+---
+
+## Testing
+
+87 tests — all passing, zero real API calls (all LLM calls are mocked).
+
+```bash
+python -m pytest -v                    # run all 87 tests
+python -m pytest tests/test_models.py  # DAG scheduling logic
+python -m pytest tests/test_agents.py  # agent logic with mocked LLM
+```
 
 ---
 
