@@ -367,6 +367,12 @@ The Orchestrator Agent is the architectural centerpiece: it uses an LLM to analy
 
 ---
 
+## Tools used
+
+- **[Claude](https://claude.ai)** (Anthropic) — AI assistant used during development for architecture decisions, code generation, and debugging.
+
+---
+
 ## License
 
 MIT
