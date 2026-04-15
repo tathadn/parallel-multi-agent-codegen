@@ -66,50 +66,32 @@ Everything routes through a single typed `AgentState` (Pydantic v2) that flows t
 
 ## 🏛️ Architecture
 
-```
-User Request
-     │
-     ▼
-┌──────────────────┐
-│   Orchestrator    │  Validates request, sets pipeline status
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│     Planner       │  Produces structured plan: steps, files, dependencies
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│  Orchestrator     │  Decomposes plan → Task DAG
-│  (DAG Builder)    │  Identifies parallelizable modules
-└────────┬─────────┘
-         │
-    ┌────┴────┬──────────┐
-    ▼         ▼          ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│Worker 1│ │Worker 2│ │Worker 3│   ← parallel coding via asyncio
-└───┬────┘ └───┬────┘ └───┬────┘
-    └─────┬────┴──────────┘
-          │
-          ▼
-┌──────────────────┐
-│    Integrator     │  Merges parallel outputs, resolves conflicts
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐ ◄─────────────────────────────┐
-│     Reviewer      │  Scores code 0–10             │  surgical revision loop
-└────────┬─────────┘                                │  (only failing nodes reset)
-         │                                          │
-         ▼                                          │
-┌──────────────────┐  tests fail or review          │
-│      Tester       │  not approved? ───────────────┘
-└────────┬─────────┘
-         │  all green
-         ▼
-    Final Output
-    (code files + plan + review + test report + cost/usage log)
+```mermaid
+flowchart TD
+    U([User Request]) --> O[Orchestrator<br/><i>validate request</i>]
+    O --> P[Planner<br/><i>structured plan: steps, files, deps</i>]
+    P --> OD[Orchestrator · DAG Builder<br/><i>decompose into parallel tasks</i>]
+    OD --> W1[Worker 1]
+    OD --> W2[Worker 2]
+    OD --> W3[Worker 3]
+    W1 --> I[Integrator<br/><i>merge parallel outputs</i>]
+    W2 --> I
+    W3 --> I
+    I --> R[Reviewer<br/><i>score 0–10</i>]
+    R --> T[Tester<br/><i>generate + run tests</i>]
+    T -->|all green| F([Final Output<br/>code + plan + review + tests + cost log])
+    T -.->|tests fail or<br/>review rejected| SR{{Surgical Revision<br/><i>reset only failing DAG nodes</i>}}
+    R -.->|score too low| SR
+    SR -.-> OD
+
+    classDef agent fill:#1e1e2e,stroke:#89b4fa,stroke-width:2px,color:#cdd6f4
+    classDef worker fill:#1e1e2e,stroke:#a6e3a1,stroke-width:2px,color:#cdd6f4
+    classDef endpoint fill:#2d1b69,stroke:#c4b5fd,stroke-width:2px,color:#f8fafc
+    classDef revision fill:#3b1e1e,stroke:#f38ba8,stroke-width:2px,color:#f8fafc
+    class O,P,OD,I,R,T agent
+    class W1,W2,W3 worker
+    class U,F endpoint
+    class SR revision
 ```
 
 ### How the Orchestrator builds the DAG
@@ -123,26 +105,23 @@ The Orchestrator is the architectural centerpiece. After the Planner produces a 
 
 For a FastAPI app with user auth, the decomposition might look like:
 
+```mermaid
+flowchart TD
+    config[config<br/><i>no deps — starts immediately</i>]
+    config --> models[models]
+    config --> schemas[schemas]
+    config --> auth[auth]
+    models --> routes[routes<br/><i>waits for models, schemas, auth</i>]
+    schemas --> routes
+    auth --> routes
+    routes --> main[main<br/><i>waits for routes</i>]
+
+    classDef parallel fill:#1e3a2f,stroke:#a6e3a1,stroke-width:2px,color:#f8fafc
+    classDef serial fill:#1e2a3a,stroke:#89b4fa,stroke-width:2px,color:#f8fafc
+    class models,schemas,auth parallel
+    class config,routes,main serial
 ```
-         ┌──────────┐
-         │  config   │  (no deps — starts immediately)
-         └─────┬────┘
-               │
-    ┌──────────┼──────────┐
-    ▼          ▼          ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│ models │ │ schemas│ │  auth  │   ← all 3 run in parallel
-└───┬────┘ └───┬────┘ └───┬────┘
-    └──────┬───┘          │
-           ▼              │
-      ┌────────┐          │
-      │ routes │ ◄────────┘          ← waits for models, schemas, auth
-      └───┬────┘
-          ▼
-      ┌────────┐
-      │  main  │                      ← waits for routes
-      └────────┘
-```
+
 
 Three modules code concurrently instead of five running sequentially — often a 40%+ end-to-end speedup.
 
@@ -333,16 +312,18 @@ A Python library for graph algorithms (BFS, DFS, Dijkstra) with a CLI interface
 
 **Orchestrator decomposes into:**
 
-```
-┌──────────┐     ┌──────────┐
-│  graph   │     │   cli    │   ← coded in parallel (no mutual deps)
-│ library  │     │  module  │
-└────┬─────┘     └────┬─────┘
-     └──────┬─────────┘
-            ▼
-       ┌──────────┐
-       │   main   │              ← waits for both
-       └──────────┘
+```mermaid
+flowchart TD
+    G[graph library<br/><i>BFS, DFS, Dijkstra</i>]
+    C[cli module<br/><i>argparse entry point</i>]
+    M[main<br/><i>waits for both</i>]
+    G --> M
+    C --> M
+
+    classDef parallel fill:#1e3a2f,stroke:#a6e3a1,stroke-width:2px,color:#f8fafc
+    classDef serial fill:#1e2a3a,stroke:#89b4fa,stroke-width:2px,color:#f8fafc
+    class G,C parallel
+    class M serial
 ```
 
 **Result:** 5 files generated, review 9/10, 12/12 tests passed, ~40% less wall time than sequential coding, full cost breakdown visible live in the sidebar.
@@ -492,23 +473,20 @@ The graph layer shouldn't need to `import anthropic` just to route errors. `Pipe
 
 ## 🧬 How the Trilogy Fits Together
 
-```
-         ┌──────────────────────┐
-         │  multi-agent-codegen  │  v1 — can agents do this at all?
-         │     (sequential)      │
-         └───────────┬──────────┘
-                     │
-                     ▼
-         ┌──────────────────────┐
-         │ parallel-multi-agent  │  v2 — can we make it fast + cheap + observable?
-         │       -codegen        │       ★ this repo
-         └───────────┬──────────┘
-                     │
-                     ▼
-         ┌──────────────────────┐
-         │ self-evolving-codegen │  v3 — can the pipeline improve itself?
-         │                       │
-         └──────────────────────┘
+```mermaid
+flowchart TD
+    V1[<b>v1 · multi-agent-codegen</b><br/><i>sequential pipeline</i><br/>Can agents do this at all?]
+    V2[<b>v2 · parallel-multi-agent-codegen</b> ★<br/><i>DAG-based concurrent coders</i><br/>Can we make it fast + cheap + observable?]
+    V3[<b>v3 · self-evolving-codegen</b><br/><i>LLM-as-judge + prompt evolution</i><br/>Can the pipeline improve itself?]
+    V1 --> V2
+    V2 --> V3
+
+    classDef prior fill:#1e1e2e,stroke:#585b70,stroke-width:2px,color:#cdd6f4
+    classDef current fill:#2d1b69,stroke:#c4b5fd,stroke-width:3px,color:#f8fafc
+    classDef future fill:#1e1e2e,stroke:#585b70,stroke-width:2px,color:#cdd6f4
+    class V1 prior
+    class V2 current
+    class V3 future
 ```
 
 Each project is self-contained and runnable on its own. If you're reading code, the recommended order is **v1 → v2 → v3** — v2 reuses v1's agent vocabulary, and v3 reuses v2's LangGraph + evaluator skeleton.
