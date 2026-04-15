@@ -1,5 +1,7 @@
 # ⚡ Parallel Multi-Agent Code Generator
 
+[![CI](https://github.com/tathadn/parallel-multi-agent-codegen/actions/workflows/ci.yml/badge.svg)](https://github.com/tathadn/parallel-multi-agent-codegen/actions/workflows/ci.yml)
+
 > Describe what you want to build — an **orchestrator agent** decomposes it into a DAG of parallel tasks, dispatches concurrent AI coding agents, merges their outputs, then reviews and tests the result automatically.
 
 **This is v2 of [multi-agent-codegen](https://github.com/tathadn/multi-agent-codegen)**, rebuilt from the ground up with a parallel orchestration architecture. The original pipeline was sequential (Orchestrator → Planner → Coder → Reviewer → Tester). This version introduces **DAG-based task decomposition** and **concurrent code generation** — independent modules are coded simultaneously by parallel worker agents, dramatically reducing end-to-end latency for complex projects.

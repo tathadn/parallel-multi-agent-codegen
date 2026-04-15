@@ -75,6 +75,8 @@ def orchestrator_decompose(state: AgentState) -> AgentState:
         system=ORCHESTRATOR_SYSTEM,
         prompt=prompt,
         model_name="claude-sonnet-4-20250514",
+        usage_sink=state.usage_log,
+        agent_label="orchestrator_decompose",
     )
 
     try:
@@ -103,8 +105,7 @@ def orchestrator_decompose(state: AgentState) -> AgentState:
     ready = state.task_dag.ready_nodes()
     total = len(state.task_dag.nodes)
     state.log(
-        f"📊 Orchestrator: DAG built — {total} nodes, "
-        f"{len(ready)} immediately parallelizable"
+        f"📊 Orchestrator: DAG built — {total} nodes, {len(ready)} immediately parallelizable"
     )
 
     state.status = TaskStatus.CODING

@@ -34,7 +34,8 @@ st.set_page_config(
 # Custom CSS for a polished dashboard look
 # ---------------------------------------------------------------------------
 
-st.markdown("""
+st.markdown(
+    """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
@@ -172,7 +173,9 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +207,10 @@ with st.sidebar:
             "claude-opus-4-20250514": "🧠 Opus (thorough)",
         }.get(x, x),
     )
+
+    st.markdown("---")
+    st.markdown("### 💰 Cost & Tokens")
+    cost_placeholder = st.empty()
 
     st.markdown("---")
     st.markdown("### 📊 Pipeline Architecture")
@@ -292,6 +299,7 @@ if example and not user_request:
 # Pipeline execution
 # ---------------------------------------------------------------------------
 
+
 def render_dag(state: AgentState) -> None:
     """Render the task DAG as visual nodes."""
     if not state.task_dag:
@@ -322,11 +330,64 @@ def render_dag(state: AgentState) -> None:
 
         st.markdown(
             f'<div class="dag-node {status_class}">'
-            f'{status_emoji} <strong>{node.name}</strong>'
+            f"{status_emoji} <strong>{node.name}</strong>"
             f'<span style="color:#6c7086">{deps}{elapsed}</span>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
+
+
+def render_cost(state: AgentState, target) -> None:
+    """Render cost dashboard: running total, cache hit rate, per-agent breakdown."""
+    if not state.usage_log:
+        target.markdown(
+            "<div style='color:#6c7086; font-size:0.8rem;'>No LLM calls yet.</div>",
+            unsafe_allow_html=True,
+        )
+        return
+
+    total_cost = state.total_cost_usd()
+    totals = state.total_tokens()
+    hit_rate = state.cache_hit_rate()
+
+    with target.container():
+        c1, c2 = st.columns(2)
+        c1.metric("Total cost", f"${total_cost:.4f}")
+        c2.metric("Cache hit", f"{hit_rate * 100:.0f}%")
+
+        st.caption(
+            f"in: {totals['input']:,}  ·  cached: {totals['cached']:,}  ·  "
+            f"out: {totals['output']:,}"
+        )
+
+        # Per-agent breakdown
+        by_agent = state.cost_by_agent()
+        if by_agent:
+            rows = [
+                {"agent": agent, "cost_usd": f"${cost:.4f}"}
+                for agent, cost in sorted(by_agent.items(), key=lambda kv: kv[1], reverse=True)
+            ]
+            st.dataframe(rows, hide_index=True, use_container_width=True)
+
+        with st.expander("Raw usage log", expanded=False):
+            st.dataframe(
+                [
+                    {
+                        "agent": u.agent,
+                        "model": u.model.replace("claude-", "")
+                        .replace("-20250514", "")
+                        .replace("-20241022", ""),
+                        "in": u.input_tokens,
+                        "cached": u.cached_input_tokens,
+                        "out": u.output_tokens,
+                        "cost": f"${u.cost_usd:.4f}",
+                        "latency_s": u.latency_s,
+                    }
+                    for u in state.usage_log
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
 
 
 def render_metrics(state: AgentState) -> None:
@@ -338,7 +399,7 @@ def render_metrics(state: AgentState) -> None:
             f'<div class="metric-card">'
             f'<div class="metric-value">{len(state.artifacts)}</div>'
             f'<div class="metric-label">Files Generated</div>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -350,7 +411,7 @@ def render_metrics(state: AgentState) -> None:
             f'<div class="metric-card">'
             f'<div class="metric-value">{parallel_nodes}</div>'
             f'<div class="metric-label">Parallel Tasks</div>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -360,7 +421,7 @@ def render_metrics(state: AgentState) -> None:
             f'<div class="metric-card">'
             f'<div class="metric-value">{score}/10</div>'
             f'<div class="metric-label">Review Score</div>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -373,7 +434,7 @@ def render_metrics(state: AgentState) -> None:
             f'<div class="metric-card">'
             f'<div class="metric-value">{tests_str}</div>'
             f'<div class="metric-label">Tests Passed</div>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -437,7 +498,7 @@ if run_clicked and user_request:
                         f'<div class="status-card {card_class}">'
                         f'<div class="agent-name">{name}</div>'
                         f'<div class="agent-status">{desc}</div>'
-                        f'</div>',
+                        f"</div>",
                         unsafe_allow_html=True,
                     )
 
@@ -448,6 +509,9 @@ if run_clicked and user_request:
             # Update metrics
             with metrics_placeholder.container():
                 render_metrics(final_state)
+
+            # Update cost dashboard
+            render_cost(final_state, cost_placeholder)
 
             # Update logs
             with log_placeholder.container():
@@ -500,22 +564,26 @@ if run_clicked and user_request:
         # Review details
         if final_state.review:
             with st.expander("🔍 Review Details", expanded=False):
-                st.json({
-                    "score": final_state.review.score,
-                    "approved": final_state.review.approved,
-                    "issues": final_state.review.issues,
-                    "suggestions": final_state.review.suggestions,
-                })
+                st.json(
+                    {
+                        "score": final_state.review.score,
+                        "approved": final_state.review.approved,
+                        "issues": final_state.review.issues,
+                        "suggestions": final_state.review.suggestions,
+                    }
+                )
 
         # Test results
         if final_state.test_result:
             with st.expander("🧪 Test Results", expanded=False):
-                st.json({
-                    "passed": final_state.test_result.passed,
-                    "total": final_state.test_result.total_tests,
-                    "passed_count": final_state.test_result.passed_tests,
-                    "failed_count": final_state.test_result.failed_tests,
-                })
+                st.json(
+                    {
+                        "passed": final_state.test_result.passed,
+                        "total": final_state.test_result.total_tests,
+                        "passed_count": final_state.test_result.passed_tests,
+                        "failed_count": final_state.test_result.failed_tests,
+                    }
+                )
                 if final_state.test_result.error_output:
                     st.code(final_state.test_result.error_output, language="text")
 

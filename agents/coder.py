@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from models.state import (
     AgentState,
     CodeArtifact,
+    LLMUsage,
     TaskDAG,
     TaskNode,
     WorkerStatus,
@@ -32,6 +33,7 @@ def _code_single_node(
     dag: TaskDAG,
     user_request: str,
     revision_context: str = "",
+    usage_sink: list[LLMUsage] | None = None,
 ) -> list[CodeArtifact]:
     """
     Generate code for a single DAG node (runs in a thread).
@@ -54,7 +56,13 @@ def _code_single_node(
         revision_context=revision_context or "No revisions — first pass.",
     )
 
-    raw = call_llm(system=CODER_SYSTEM, prompt=prompt, model_name="claude-sonnet-4-20250514")
+    raw = call_llm(
+        system=CODER_SYSTEM,
+        prompt=prompt,
+        model_name="claude-sonnet-4-20250514",
+        usage_sink=usage_sink,
+        agent_label=f"coder:{node.id}",
+    )
     files_data = parse_json_response(raw)
 
     if isinstance(files_data, dict):
@@ -78,6 +86,7 @@ async def _run_node_async(
     dag: TaskDAG,
     user_request: str,
     revision_context: str = "",
+    usage_sink: list[LLMUsage] | None = None,
 ) -> tuple[str, list[CodeArtifact]]:
     """Async wrapper that runs _code_single_node in the thread pool."""
     loop = asyncio.get_event_loop()
@@ -88,6 +97,7 @@ async def _run_node_async(
         dag,
         user_request,
         revision_context,
+        usage_sink,
     )
     return node.id, artifacts
 
@@ -123,7 +133,7 @@ async def run_parallel_coders(
 
     # Run all ready nodes concurrently
     tasks = [
-        _run_node_async(node, dag, state.user_request, revision_context)
+        _run_node_async(node, dag, state.user_request, revision_context, state.usage_log)
         for node in ready
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -161,8 +171,7 @@ def coder_worker(state: AgentState) -> AgentState:
     revision_context = ""
     if state.review and not state.review.approved:
         revision_context = (
-            f"Previous review score: {state.review.score}/10\n"
-            f"Issues: {state.review.issues}\n"
+            f"Previous review score: {state.review.score}/10\nIssues: {state.review.issues}\n"
         )
     if state.test_result and not state.test_result.passed:
         revision_context += f"Test failures:\n{state.test_result.error_output}\n"
@@ -209,9 +218,7 @@ def coder_worker(state: AgentState) -> AgentState:
     loop = asyncio.new_event_loop()
     try:
         while not state.task_dag.all_done():
-            loop.run_until_complete(
-                run_parallel_coders(state, revision_context)
-            )
+            loop.run_until_complete(run_parallel_coders(state, revision_context))
             if state.task_dag.any_failed():
                 state.log("❌ Some DAG nodes failed — aborting coding phase")
                 break

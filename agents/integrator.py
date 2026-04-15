@@ -42,7 +42,13 @@ def integrator_agent(state: AgentState) -> AgentState:
         artifacts=artifacts_text,
     )
 
-    raw = call_llm(system=INTEGRATOR_SYSTEM, prompt=prompt, model_name="claude-haiku-4-5-20241022")
+    raw = call_llm(
+        system=INTEGRATOR_SYSTEM,
+        prompt=prompt,
+        model_name="claude-haiku-4-5-20241022",
+        usage_sink=state.usage_log,
+        agent_label="integrator",
+    )
 
     try:
         merged_data = parse_json_response(raw)

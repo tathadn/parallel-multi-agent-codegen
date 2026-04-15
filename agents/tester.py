@@ -36,15 +36,19 @@ def tester_agent(state: AgentState, model_name: str = "claude-haiku-4-5-20241022
         artifacts=artifacts_text,
     )
 
-    raw = call_llm(system=TESTER_SYSTEM, prompt=prompt, model_name=model_name)
+    raw = call_llm(
+        system=TESTER_SYSTEM,
+        prompt=prompt,
+        model_name=model_name,
+        usage_sink=state.usage_log,
+        agent_label="tester",
+    )
 
     try:
         test_files_data = parse_json_response(raw)
     except ValueError as e:
         state.log(f"⚠️ Tester: failed to generate tests — {e}")
-        state.test_result = TestResult(
-            passed=False, error_output=f"Test generation failed: {e}"
-        )
+        state.test_result = TestResult(passed=False, error_output=f"Test generation failed: {e}")
         state.timings["tester"] = round(time.time() - t0, 2)
         return state
 

@@ -26,6 +26,7 @@ classifiers = [
 
 dependencies = [
     "anthropic>=0.40.0",
+    "tenacity>=8.0.0",
     "langgraph>=0.2.0",
     "langchain-anthropic>=0.3.0",
     "langchain-core>=0.3.0",
@@ -56,6 +57,9 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["UP045"]  # Project uses Optional[X] for Pydantic fields (see CLAUDE.md)
+
+[tool.ruff.lint.per-file-ignores]
+"app.py" = ["E501"]  # Long lines in embedded CSS strings are unavoidable
 
 [tool.mypy]
 python_version = "3.10"

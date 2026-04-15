@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-import pytest
-
 from agents.coder import coder_worker
 from agents.orchestrator import orchestrator_agent, orchestrator_decompose
 from agents.planner import planner_agent
@@ -14,13 +12,10 @@ from agents.reviewer import reviewer_agent
 from models.state import (
     AgentState,
     CodeArtifact,
-    Plan,
-    PlanStep,
     ReviewFeedback,
     TaskStatus,
     WorkerStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # TestOrchestratorIntake
@@ -89,9 +84,7 @@ class TestOrchestratorDecompose:
         assert result.status == TaskStatus.FAILED
 
     @patch("agents.orchestrator.call_llm")
-    def test_sets_coding_status(
-        self, mock_llm: object, state_with_plan: AgentState
-    ) -> None:
+    def test_sets_coding_status(self, mock_llm: object, state_with_plan: AgentState) -> None:
         mock_llm.return_value = json.dumps(  # type: ignore[attr-defined]
             {
                 "nodes": [
@@ -116,9 +109,7 @@ class TestOrchestratorDecompose:
 
 class TestPlannerAgent:
     @patch("agents.planner.call_llm")
-    def test_generates_plan_from_request(
-        self, mock_llm: object, empty_state: AgentState
-    ) -> None:
+    def test_generates_plan_from_request(self, mock_llm: object, empty_state: AgentState) -> None:
         mock_llm.return_value = json.dumps(  # type: ignore[attr-defined]
             {
                 "objective": "Add two numbers",
@@ -142,17 +133,13 @@ class TestPlannerAgent:
         assert len(result.plan.steps) == 1
 
     @patch("agents.planner.call_llm")
-    def test_handles_parse_failure(
-        self, mock_llm: object, empty_state: AgentState
-    ) -> None:
+    def test_handles_parse_failure(self, mock_llm: object, empty_state: AgentState) -> None:
         mock_llm.return_value = "not valid json"  # type: ignore[attr-defined]
         result = planner_agent(empty_state)
         assert result.plan is None
 
     @patch("agents.planner.call_llm")
-    def test_plan_has_correct_steps(
-        self, mock_llm: object, empty_state: AgentState
-    ) -> None:
+    def test_plan_has_correct_steps(self, mock_llm: object, empty_state: AgentState) -> None:
         mock_llm.return_value = json.dumps(  # type: ignore[attr-defined]
             {
                 "objective": "obj",
@@ -205,9 +192,7 @@ class TestPlannerAgent:
 
 class TestReviewerAgent:
     @patch("agents.reviewer.call_llm")
-    def test_approves_high_score(
-        self, mock_llm: object, empty_state: AgentState
-    ) -> None:
+    def test_approves_high_score(self, mock_llm: object, empty_state: AgentState) -> None:
         mock_llm.return_value = json.dumps(  # type: ignore[attr-defined]
             {"score": 9, "approved": True, "issues": [], "suggestions": []}
         )
@@ -218,9 +203,7 @@ class TestReviewerAgent:
         assert result.review.score == 9
 
     @patch("agents.reviewer.call_llm")
-    def test_rejects_low_score(
-        self, mock_llm: object, empty_state: AgentState
-    ) -> None:
+    def test_rejects_low_score(self, mock_llm: object, empty_state: AgentState) -> None:
         mock_llm.return_value = json.dumps(  # type: ignore[attr-defined]
             {
                 "score": 3,
@@ -236,9 +219,7 @@ class TestReviewerAgent:
         assert "Missing types" in result.review.issues
 
     @patch("agents.reviewer.call_llm")
-    def test_handles_parse_failure(
-        self, mock_llm: object, empty_state: AgentState
-    ) -> None:
+    def test_handles_parse_failure(self, mock_llm: object, empty_state: AgentState) -> None:
         mock_llm.return_value = "not json"  # type: ignore[attr-defined]
         empty_state.artifacts = [CodeArtifact(filename="main.py", content="x=1")]
         result = reviewer_agent(empty_state)
@@ -262,9 +243,7 @@ class TestReviewerAgent:
 
 class TestSurgicalRevision:
     @patch("agents.coder.call_llm")
-    def test_only_resets_failing_nodes(
-        self, mock_llm: object, state_with_dag: AgentState
-    ) -> None:
+    def test_only_resets_failing_nodes(self, mock_llm: object, state_with_dag: AgentState) -> None:
         """When reviewer flags routes.py, only node D should reset; A and B stay DONE."""
         mock_llm.return_value = json.dumps(  # type: ignore[attr-defined]
             [{"filename": "routes.py", "language": "python", "content": "# revised routes"}]

@@ -28,6 +28,7 @@ from models.state import AgentState, TaskStatus
 # Routing functions
 # ---------------------------------------------------------------------------
 
+
 def should_continue(state: AgentState) -> str:
     """
     After the Tester runs, decide whether to revise or finish.
@@ -47,9 +48,7 @@ def should_continue(state: AgentState) -> str:
 
     if state.iteration >= state.max_iterations:
         state.status = TaskStatus.FAILED
-        state.log(
-            f"⛔ Pipeline FAILED — max iterations ({state.max_iterations}) reached"
-        )
+        state.log(f"⛔ Pipeline FAILED — max iterations ({state.max_iterations}) reached")
         return "fail"
 
     # Revision needed
@@ -65,6 +64,7 @@ def should_continue(state: AgentState) -> str:
 # ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
+
 
 def build_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
     """

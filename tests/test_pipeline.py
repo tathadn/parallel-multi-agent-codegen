@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from graph.pipeline import build_graph, should_continue
 from models.state import AgentState, ReviewFeedback, TaskStatus
 from models.state import TestResult as TestResultModel
@@ -53,7 +51,9 @@ class TestShouldContinue:
         assert should_continue(state) == "revise"
 
     def test_fail_at_max_iterations(self) -> None:
-        state = _make_state(review_approved=False, tests_passed=False, iteration=3, max_iterations=3)
+        state = _make_state(
+            review_approved=False, tests_passed=False, iteration=3, max_iterations=3
+        )
         assert should_continue(state) == "fail"
 
     def test_revise_increments_iteration(self) -> None:
